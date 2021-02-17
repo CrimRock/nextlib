@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #elif defined(WIN32) || defined(_WIN32) || defined(__WIN32)
 #define IsWindows
+#include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 #endif
@@ -78,17 +79,6 @@ public:
         #endif
     }
 
-    #ifdef IsWindows
-    SOCKET Accept() {
-        sockaddr_in client;
-        int clientSize = sizeof(client);
-        
-        SOCKET clientSocket = accept(sock, (sockaddr*)&client, &clientSize);
-        if (clientSocket == INVALID_SOCKET) {
-            throw (runtime_error("Failed to accept client connection!"));
-        }
-    }
-    #else
     int Accept() {
         sockaddr_in client;
         socklen_t clientSize = sizeof(client);
@@ -100,7 +90,6 @@ public:
 
         return clientSocket;
     }
-    #endif
 
     void Connect(string ip, int port) {
         hint.sin_family = AF_INET;
