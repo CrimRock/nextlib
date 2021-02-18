@@ -8,13 +8,17 @@
 #else
 #include <unistd.h>
 #include <dirent.h>
+#include <stdlib.h>
 #define GetCurrentDir getcwd
 #endif
 
 #include <string>
+#include <string.h>
 #include <vector>
 #include <fstream>
 #include <nextlib/error.hpp>
+
+#include <iostream>
 
 class File {
 public:
@@ -26,6 +30,12 @@ public:
 
     void Open(std::string filename) {
         this->filename = filename;
+    }
+
+    static void Delete(std::string filename) {
+        if (std::remove(filename.c_str()) != 0) {
+            throw (Exception("Failed to delete file."));
+        }
     }
 
     std::vector<std::string> ReadAllLines() {
@@ -96,7 +106,17 @@ public:
         this->dirname = dirname;
     }
 
-    std::string GetCurrent() {
+    static int Delete(std::string dirname, bool recursive = true) {
+        int IRC;
+        #ifdef _WIN32
+        IRC = WinDeleteDirectory(dirname, recursive);
+        #else
+        IRC = LinuxDeleteDirectory(dirname, recursive);
+        #endif
+        return IRC;
+    }
+
+    static std::string GetCurrent() {
         char buff[FILENAME_MAX];
         GetCurrentDir(buff, FILENAME_MAX);
         return std::string(buff);
@@ -208,6 +228,98 @@ public:
     }
 private:
     std::string dirname;
+
+    #ifdef _WIN32
+    static int WinDeleteDirectory(std::string dirname, bool bDeleteSubdirectories) {
+        bool bSubdirectory = false;
+
+        HANDLE hFile;
+        std::string strFilePath;
+        std::string strPattern;
+        WIN32_FIND_DATA FileInformation;
+
+        strPattern = dirname + "\\*.*";
+        hFile = ::FindFirstFile(strPattern.c_str(), &FileInformation);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            do {
+                if (FileInformation.cFileName[0] != '.') {
+                    strFilePath.erase();
+                    strFilePath = dirname + "\\" + FileInformation.cFileName;
+
+                    if (FileInformation.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                        if (bDeleteSubdirectories) {
+                            int iRC = WinDeleteDirectory(strFilePath, bDeleteSubdirectories);
+                            if (iRC)
+                                return iRC;
+                        } else {
+                            bSubdirectory = true;
+                        }
+                    } else {
+                        if (::SetFileAttributes(strFilePath.c_str(), FILE_ATTRIBUTE_NORMAL) == FALSE) {
+                            return ::GetLastError();
+                        }
+
+                        if (::DeleteFile(strFilePath.c_str()) == FALSE) {
+                            return ::GetLastError();
+                        }
+                    }
+                }
+            } while (::FindNextFile(hFile, &FileInformation) == TRUE);
+
+            ::FindClose(hFile);
+            DWORD dwError = ::GetLastError();
+            if (dwError != ERROR_NO_MORE_FILES) {
+                return dwError;
+            } else {
+                if (!bSubdirectory) {
+                    if (::SetFileAttributes(dirname.c_str(), FILE_ATTRIBUTE_NORMAL) == FALSE) {
+                        return ::GetLastError();
+                    }
+
+                    if (::RemoveDirectory(dirname.c_str()) == FALSE) {
+                        return ::GetLastError();
+                    }
+                }
+            }
+        }
+
+        return 0;
+    }
+    #else
+    static int LinuxDeleteDirectory(std::string dirname, bool recursive) {
+        DIR *dir;
+        struct dirent *entry;
+        char path[PATH_MAX];
+        char dirn[dirname.length()];
+        strcpy(dirn, dirname.c_str());
+
+        if (path == NULL) {
+            fprintf(stderr, "Out of memory error\n");
+            return 0;
+        }
+        dir = opendir(dirname.c_str());
+        if (dir == NULL) {
+            perror("Error opendir()");
+            return 0;
+        }
+
+        while ((entry = readdir(dir)) != NULL) {
+            if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..")) {
+                snprintf(path, (size_t) PATH_MAX, "%s/%s", dirn, entry->d_name);
+                if (entry->d_type == DT_DIR) {
+                    LinuxDeleteDirectory(std::string(path), recursive);
+                } else {
+                    File::Delete(std::string(path));
+                }
+                std::cout << "Deleting: " << path << std::endl;
+            }
+        }
+        closedir(dir);
+        remove(dirname.c_str());
+
+        return 0;
+    }
+    #endif
 };
 
 #endif // NEXTLIB_FS_HPP
