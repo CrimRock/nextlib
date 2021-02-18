@@ -18,8 +18,6 @@
 #include <fstream>
 #include <nextlib/error.hpp>
 
-#include <iostream>
-
 class File {
 public:
     File() {}
@@ -294,13 +292,13 @@ private:
         strcpy(dirn, dirname.c_str());
 
         if (path == NULL) {
-            fprintf(stderr, "Out of memory error\n");
-            return 0;
+            // Out of memory error
+            return 1;
         }
         dir = opendir(dirname.c_str());
         if (dir == NULL) {
-            perror("Error opendir()");
-            return 0;
+            // Directory not exists
+            return -1;
         }
 
         while ((entry = readdir(dir)) != NULL) {
@@ -311,7 +309,6 @@ private:
                 } else {
                     File::Delete(std::string(path));
                 }
-                std::cout << "Deleting: " << path << std::endl;
             }
         }
         closedir(dir);
