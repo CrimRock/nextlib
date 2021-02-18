@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace JSON
+namespace Next
 {
     class Json {
     public:
