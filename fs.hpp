@@ -111,13 +111,13 @@ namespace Next
             this->dirname = dirname;
         }
 
-	static void Create(std::string dirname) {
+	    static void Create(std::string dirname) {
 #ifdef __unix__
-		mkdir(dirname.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+		    mkdir(dirname.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 #elif defined(WIN32) || defined(_WIN32) || defined(__WIN32)
-		_mkdir(dirname.c_str());
+		    _mkdir(dirname.c_str());
 #endif
-	}
+	    }
 
         static int Delete(std::string dirname, bool recursive = true) {
             int IRC;
@@ -127,6 +127,32 @@ namespace Next
             IRC = WinDeleteDirectory(dirname, recursive);
 #endif
             return IRC;
+        }
+
+        static bool Exists(std::string dirname) {
+#ifdef __unix__
+            if (dirname == "") return false;
+
+            DIR *dir;
+
+            dir = opendir(dirname.c_str());
+
+            if (dir != NULL) {
+                closedir(dir);
+                return true;
+            } else {
+                return false;
+            }
+#elif defined(WIN32) || defined(_WIN32) || defined(__WIN32)
+            DWORD ftyp = GetFileAttributesA(dirname.c_str());
+            if (ftyp == INVALID_FILE_ATTRIBUTES)
+                return false;
+            
+            if (ftyp & FILE_ATTRIBUTE_DIRECTORY)
+                return true;
+            
+            return false;
+#endif
         }
 
         static std::string GetCurrent() {
