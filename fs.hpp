@@ -1,15 +1,20 @@
 #ifndef NEXTLIB_FS_HPP
 #define NEXTLIB_FS_HPP
 
-#ifdef _WIN32
-#include <direct.h>
-#include <windows.h>
-#define GetCurrentDir _getcwd
-#else
+#ifdef __unix__
 #include <unistd.h>
 #include <dirent.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #define GetCurrentDir getcwd
+
+#elif defined(_WIN32)
+#include <direct.h>
+#include <windows.h>
+#define GetCurrentDir _getcwd
+
+#else
+#error "Platform not supported."
 #endif
 
 #include <string>
@@ -106,13 +111,21 @@ namespace Next
             this->dirname = dirname;
         }
 
+	static void Create(std::string dirname) {
+#ifdef __unix__
+		mkdir(dirname.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+#elif defined(WIN32) || defined(_WIN32) || defined(__WIN32)
+		_mkdir(dirname.c_str());
+#endif
+	}
+
         static int Delete(std::string dirname, bool recursive = true) {
             int IRC;
-            #ifdef _WIN32
+#ifdef __unix__
+	    IRC = WinDeleteDirectory(dirname, recursive);
+#elif defined(WIN32) || defined(_WIN32) || defined(__WIN32)
             IRC = WinDeleteDirectory(dirname, recursive);
-            #else
-            IRC = LinuxDeleteDirectory(dirname, recursive);
-            #endif
+#endif
             return IRC;
         }
 
@@ -124,19 +137,7 @@ namespace Next
 
         std::vector<std::string> GetFiles() {
             std::vector<std::string> files;
-            #ifdef _WIN32
-            std::string searchPath = dirname + "/*.*";
-            WIN32_FIND_DATA fd;
-            HANDLE hFind = ::FindFirstFile(searchPath.c_str(), &fd);
-            if (hFind != INVALID_HANDLE_VALUE) {
-                do {
-                    if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                        files.push_back(fd.cFileName);
-                    }
-                } while (::FindNextFile(hFind, &fd));
-                ::FindClose(hFind);
-            }
-            #else
+#ifdef __unix__
             DIR* dir = opendir(std::string(GetCurrent() + "/" + dirname).c_str());
             if (dir == NULL) {
                 dir = opendir(dirname.c_str());
@@ -154,14 +155,44 @@ namespace Next
             }
 
             closedir(dir);
-            #endif
+#elif defined(WIN32) || defined(_WIN32) || defined(__WIN32)
+            std::string searchPath = dirname + "/*.*";
+            WIN32_FIND_DATA fd;
+            HANDLE hFind = ::FindFirstFile(searchPath.c_str(), &fd);
+            if (hFind != INVALID_HANDLE_VALUE) {
+                do {
+                    if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                        files.push_back(fd.cFileName);
+                    }
+                } while (::FindNextFile(hFind, &fd));
+                ::FindClose(hFind);
+            }
+#endif
             return files;
         }
 
         std::vector<std::string> GetDirectories() {
             std::vector<std::string> dirs;
 
-            #ifdef _WIN32
+#ifdef __unix__
+            DIR* dir = opendir(std::string(GetCurrent() + "/" + dirname).c_str());
+            if (dir == NULL) {
+                dir = opendir(dirname.c_str());
+                if (dir == NULL) {
+                    throw (Exception("Folder not found."));
+                }
+            }
+
+            struct dirent* entity;
+            entity = readdir(dir);
+            while (entity != NULL) {
+                if (entity->d_type == DT_DIR && std::string(entity->d_name) != "." && std::string(entity->d_name) != "..")
+                    dirs.push_back(std::string(entity->d_name));
+                entity = readdir(dir);
+            }
+
+            closedir(dir);
+#elif defined(WIN32) || defined(_WIN32) || defined(__WIN32)
             HANDLE hFile;
             std::string strFilePath;
             std::string strPattern;
@@ -206,32 +237,47 @@ namespace Next
             } else {
                 throw (Exception("Folder not found."));
             }
-            #else
-            DIR* dir = opendir(std::string(GetCurrent() + "/" + dirname).c_str());
-            if (dir == NULL) {
-                dir = opendir(dirname.c_str());
-                if (dir == NULL) {
-                    throw (Exception("Folder not found."));
-                }
-            }
-
-            struct dirent* entity;
-            entity = readdir(dir);
-            while (entity != NULL) {
-                if (entity->d_type == DT_DIR && std::string(entity->d_name) != "." && std::string(entity->d_name) != "..")
-                    dirs.push_back(std::string(entity->d_name));
-                entity = readdir(dir);
-            }
-
-            closedir(dir);
-            #endif
+#endif
 
             return dirs;
         }
     private:
         std::string dirname;
 
-        #ifdef _WIN32
+#ifdef __unix__
+        static int LinuxDeleteDirectory(std::string dirname, bool recursive) {
+            DIR *dir;
+            struct dirent *entry;
+            char path[PATH_MAX];
+            char dirn[dirname.length()];
+            strcpy(dirn, dirname.c_str());
+
+            if (path == NULL) {
+                // Out of memory error
+                return 1;
+            }
+            dir = opendir(dirname.c_str());
+            if (dir == NULL) {
+                // Directory not exists
+                return -1;
+            }
+
+            while ((entry = readdir(dir)) != NULL) {
+                if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..")) {
+                    snprintf(path, (size_t) PATH_MAX, "%s/%s", dirn, entry->d_name);
+                    if (entry->d_type == DT_DIR) {
+                        LinuxDeleteDirectory(std::string(path), recursive);
+                    } else {
+                        File::Delete(std::string(path));
+                    }
+                }
+            }
+            closedir(dir);
+            remove(dirname.c_str());
+
+            return 0;
+        }
+#elif defined(WIN32) || defined(_WIN32) || defined(__WIN32)
         static int WinDeleteDirectory(std::string dirname, bool bDeleteSubdirectories) {
             bool bSubdirectory = false;
 
@@ -287,40 +333,7 @@ namespace Next
 
             return 0;
         }
-        #else
-        static int LinuxDeleteDirectory(std::string dirname, bool recursive) {
-            DIR *dir;
-            struct dirent *entry;
-            char path[PATH_MAX];
-            char dirn[dirname.length()];
-            strcpy(dirn, dirname.c_str());
-
-            if (path == NULL) {
-                // Out of memory error
-                return 1;
-            }
-            dir = opendir(dirname.c_str());
-            if (dir == NULL) {
-                // Directory not exists
-                return -1;
-            }
-
-            while ((entry = readdir(dir)) != NULL) {
-                if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..")) {
-                    snprintf(path, (size_t) PATH_MAX, "%s/%s", dirn, entry->d_name);
-                    if (entry->d_type == DT_DIR) {
-                        LinuxDeleteDirectory(std::string(path), recursive);
-                    } else {
-                        File::Delete(std::string(path));
-                    }
-                }
-            }
-            closedir(dir);
-            remove(dirname.c_str());
-
-            return 0;
-        }
-        #endif
+#endif
     };
 }
 
