@@ -122,7 +122,7 @@ namespace Next
         static int Delete(std::string dirname, bool recursive = true) {
             int IRC;
 #ifdef __unix__
-	    IRC = WinDeleteDirectory(dirname, recursive);
+	        IRC = LinuxDeleteDirectory(dirname, recursive);
 #elif defined(WIN32) || defined(_WIN32) || defined(__WIN32)
             IRC = WinDeleteDirectory(dirname, recursive);
 #endif
