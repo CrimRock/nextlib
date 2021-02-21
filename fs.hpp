@@ -43,6 +43,21 @@ namespace Next
             }
         }
 
+        static void Create(std::string filename) {
+            std::ofstream file(filename);
+            file.close();
+        }
+
+        static bool Exists(std::string filename) {
+#ifdef __unix__
+            struct stat buffer;
+            return (stat(filename.c_str(), &buffer) == 0);
+#elif defined(WIN32) || defined(_WIN32) || defined(__WIN32)
+            std::ifstream file(filename.c_str());
+            return file.good();
+#endif
+        }
+
         std::vector<std::string> ReadAllLines() {
             std::vector<std::string> lines;
             std::string temp;
